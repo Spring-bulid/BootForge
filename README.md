@@ -1,8 +1,8 @@
-# boot-image-decompiler
+# BootForge
 
 在浏览器里拆解 Android boot.img / init_boot.img，不需要上传文件，也不依赖后端。
 
-在线使用：https://spring-bulid.github.io/boot-image-decompiler/
+在线使用：https://spring-bulid.github.io/BootForge/
 
 ## 能做什么
 
