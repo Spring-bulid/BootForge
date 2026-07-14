@@ -487,6 +487,88 @@ export async function decompressGzip(bytes) {
   }
 }
 
+export function decompressLz4(bytes) {
+  // LZ4 frame format: magic(4) + FLG(1) + BD(1) + optional header + blocks + endmark
+  if (!(bytes instanceof Uint8Array) || bytes.length < 7) return null;
+  const magic = (bytes[0]<<24)|(bytes[1]<<16)|(bytes[2]<<8)|bytes[3];
+  if (magic !== 0x04224D18) return null;
+
+  const flg = bytes[4];
+  const hasContentSize = flg & 0x08;
+  const hasBlockChecksum = flg & 0x10;
+  const blockMaxSize = 4 << ((flg >> 4) & 7); // 64KB, 256KB, 1MB, or 4MB
+
+  let pos = 7; // skip magic, FLG, BD
+  const bd = bytes[6];
+  const headerSize = bd >> 4;
+  pos += headerSize; // skip optional header (dictId, contentSize, etc.)
+
+  const outChunks = [];
+  let outTotal = 0;
+
+  while (pos + 4 <= bytes.length) {
+    const blockSize = (bytes[pos] | (bytes[pos+1]<<8) | (bytes[pos+2]<<16) | (bytes[pos+3]<<24)) >>> 0;
+    pos += 4;
+    if (blockSize === 0) break; // end mark
+    const isCompressed = (blockSize & 0x80000000) !== 0;
+    const dataSize = blockSize & 0x7FFFFFFF;
+
+    if (pos + dataSize > bytes.length) break;
+
+    if (isCompressed) {
+      // LZ4 block: sequence of literals + match copies
+      const out = new Uint8Array(blockMaxSize + 256); // generous
+      let src = pos;
+      let dst = 0;
+      const srcEnd = pos + dataSize;
+      const outEnd = out.length - 8;
+
+      while (src < srcEnd && dst < outEnd) {
+        const token = bytes[src++];
+        let litLen = token >> 4;
+        if (litLen === 15) { let s; do { if (src >= srcEnd) break; s = bytes[src++]; litLen += s; } while (s === 255); }
+        if (src + litLen > srcEnd) break;
+        for (let i = 0; i < litLen; i++) out[dst++] = bytes[src++];
+
+        if (src >= srcEnd) break;
+        const offset = (bytes[src] | (bytes[src+1]<<8)); src += 2;
+        if (offset === 0 || offset > dst) break;
+        let matchLen = token & 0x0F;
+        if (matchLen === 15) { let s; do { if (src >= srcEnd) break; s = bytes[src++]; matchLen += s; } while (s === 255); }
+        matchLen += 4; // minimum match length
+
+        // Copy match
+        const copySrc = dst - offset;
+        for (let i = 0; i < matchLen; i++) {
+          out[dst++] = out[copySrc + i];
+          if (dst > outEnd) break;
+        }
+      }
+
+      outChunks.push(out.slice(0, dst));
+      outTotal += dst;
+    } else {
+      // Uncompressed block
+      outChunks.push(bytes.slice(pos, pos + dataSize));
+      outTotal += dataSize;
+    }
+    pos += dataSize;
+
+    if (hasBlockChecksum) {
+      if (pos + 4 > bytes.length) break;
+      pos += 4;
+    }
+  }
+
+  if (outChunks.length === 0) return null;
+
+  // Concatenate
+  const result = new Uint8Array(outTotal);
+  let off = 0;
+  for (const c of outChunks) { result.set(c, off); off += c.length; }
+  return result;
+}
+
 export function findKernelVersion(bytes) {
   if (!(bytes instanceof Uint8Array)) return null;
   // Search for "Linux version" ASCII string
@@ -933,7 +1015,7 @@ if (typeof document !== "undefined") {
 
   async function renderRamdiskInspection(comp, bytes) {
     const wrapper = document.createElement("div");
-    wrapper.className = "inspection-section";;
+    wrapper.className = "inspection-section";
 
     const h3 = document.createElement("h3");
     h3.textContent = "Ramdisk 内容";
@@ -945,27 +1027,46 @@ if (typeof document !== "undefined") {
     status.textContent = "正在解析...";
     wrapper.append(status);
 
-    // Insert after component table
     bootComponents.parentNode.insertBefore(wrapper, bootComponents.nextSibling);
 
-    // Check if ramdisk is a compressed cpio
     const slice = bytes.slice(comp.offset, comp.offset + comp.size);
     const ext = detectComponentFormat(bytes, comp.offset, comp.size);
-    let expanded;
+    let expanded = null;
+    let tried = [];
 
-    if (ext === ".gz") {
-      expanded = await decompressGzip(slice);
-      if (!expanded) {
-        status.textContent = "Gzip 解压失败。";
-        return;
-      }
-    } else {
+    // Try raw cpio first (uncompressed ramdisks)
+    const rawFiles = parseCpioListing(slice);
+    if (rawFiles.length) {
       expanded = slice;
+      tried.push("raw cpio");
+    }
+
+    // Try gzip decompression
+    if (!expanded) {
+      tried.push("gzip");
+      const decompressed = await decompressGzip(slice);
+      if (decompressed) {
+        expanded = decompressed;
+      }
+    }
+
+    // Try lz4 decompression (regardless of detected extension - magic check was wrong sometimes)
+    if (!expanded) {
+      tried.push("lz4");
+      const lz4Result = decompressLz4(slice);
+      if (lz4Result) {
+        expanded = lz4Result;
+      }
+    }
+
+    if (!expanded) {
+      status.textContent = `无法解压 ramdisk（尝试了 ${tried.join("、")}）。格式: ${ext}，大小: ${formatSize(comp.size)}。请下载后用对应工具解压。`;
+      return;
     }
 
     const files = parseCpioListing(expanded);
     if (!files.length) {
-      status.textContent = "未识别到有效的 cpio 格式。";
+      status.textContent = "解压成功但未识别到有效的 cpio 格式。";
       return;
     }
 
