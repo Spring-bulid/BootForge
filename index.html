@@ -3,50 +3,76 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Android Boot Image 分解工具</title>
+    <meta name="theme-color" content="#e6be8a">
+    <title>BootForge — Android boot.img 在线分解</title>
+    <meta name="description" content="浏览器端 Android boot.img / init_boot.img 解析工具，无需上传文件">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <a class="visually-hidden" id="skip-link" href="#workspace">跳到主内容</a>
-    <main class="app-shell">
-      <header class="title-bar">
-        <h1>Android Boot Image 分解</h1>
-      </header>
+    <header class="navbar">
+      <div class="navbar-inner">
+        <a href="/" class="nav-brand">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-logo"><rect x="2" y="2" width="20" height="20" rx="4"/><circle cx="8" cy="8" r="1.2"/><circle cx="8" cy="14" r="1.2"/><path d="M14 8h3"/><path d="M14 11h3"/><path d="M14 14h2"/></svg>
+          <span>BootForge</span>
+        </a>
+        <nav class="nav-links">
+          <a href="https://github.com/Spring-bulid/BootForge" target="_blank" class="nav-link">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+            GitHub
+          </a>
+        </nav>
+      </div>
+    </header>
 
-      <section class="workspace" id="workspace" aria-label="Boot Image 分解">
+    <main class="main-content">
+      <section class="hero">
+        <p class="hero-tag" data-nosnippet>Android Boot Image Online Decompiler</p>
+        <h1 class="hero-title">BootForge</h1>
+        <p class="hero-desc">浏览器端解析 boot.img / init_boot.img，自动识别 V0-V4 header，提取内核、ramdisk、DTB 等组件。纯前端，不上传文件。</p>
+      </section>
 
-        <section class="analysis-section" aria-labelledby="boot-section-title">
-          <h2 id="boot-section-title">选择并解析 Boot Image</h2>
-
-          <label class="drop-zone compact-drop-zone" id="boot-drop-zone" for="boot-file-input">
-            <strong>选择 boot.img / init_boot.img 文件</strong>
-            <span>或将文件拖放到此处</span>
-            <input class="visually-hidden" id="boot-file-input" name="boot-file" type="file" accept=".img" aria-describedby="boot-file-error" aria-invalid="false">
-          </label>
-
-          <p class="file-name" id="boot-file-name">尚未选择文件</p>
-          <div class="file-actions" id="boot-file-actions" hidden>
-            <button type="button" id="boot-replace-file">更换文件</button>
-            <button type="button" id="boot-remove-file">移除</button>
+      <section class="workspace-section">
+        <div class="workspace-card">
+          <div class="drop-zone-container">
+            <label class="drop-zone" id="boot-drop-zone" for="boot-file-input">
+              <div class="drop-zone-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <strong>选择 boot.img 或拖放到此处</strong>
+              <span>支持 V0-V4 / init_boot.img (Android 13+)</span>
+              <input class="visually-hidden" id="boot-file-input" name="boot-file" type="file" accept=".img" aria-describedby="boot-file-error">
+            </label>
           </div>
-          <p class="field-error" id="boot-file-error" aria-live="polite"></p>
 
-          <p class="boot-status" id="boot-status" role="status" aria-live="polite">选择 boot image 文件开始解析。</p>
+          <p class="file-name" id="boot-file-name"></p>
+          <div class="file-actions" id="boot-file-actions" hidden>
+            <button type="button" id="boot-replace-file" class="btn btn-sm">更换文件</button>
+            <button type="button" id="boot-remove-file" class="btn btn-sm">移除</button>
+          </div>
+          <p class="field-error" id="boot-file-error"></p>
+
+          <p class="status-text" id="boot-status" role="status" aria-live="polite">选择 boot image 文件开始解析</p>
 
           <div id="boot-results" hidden>
-            <div class="boot-metadata-card" id="boot-metadata"></div>
-            <div id="boot-components"></div>
-            <div class="issue-panel" id="boot-issues" hidden></div>
-            <div class="report-actions">
-              <button type="button" id="boot-download-all" class="primary">下载全部组件 (ZIP)</button>
-              <button type="button" id="boot-download-json">下载 JSON 报告</button>
-              <button type="button" id="boot-reset">重置</button>
+            <div class="result-grid" id="boot-metadata"></div>
+            <div class="result-section" id="boot-components"></div>
+            <div class="result-section" id="boot-issues" hidden></div>
+            <div class="action-row">
+              <button type="button" id="boot-download-all" class="btn btn-primary">下载全部组件 (ZIP)</button>
+              <button type="button" id="boot-download-json" class="btn">下载 JSON 报告</button>
+              <button type="button" id="boot-reset" class="btn btn-ghost">重置</button>
             </div>
           </div>
-        </section>
-
+        </div>
       </section>
     </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>BootForge &mdash; Browser-based Android boot image decompiler</p>
+        <a href="https://github.com/Spring-bulid/BootForge" target="_blank" class="footer-link">GitHub</a>
+      </div>
+    </footer>
     <script type="module" src="script.js"></script>
   </body>
 </html>
