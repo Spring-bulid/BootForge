@@ -945,7 +945,12 @@ if (typeof document !== "undefined") {
         dlBtn.className = "btn btn-xs";
         dlBtn.addEventListener("click", () => {
           const ext = detectComponentFormat(bytes, comp.offset, comp.size);
-          downloadBlob(bytes.slice(comp.offset, comp.end), `${comp.name}${ext}`, "application/octet-stream");
+          // Pack component as ZIP
+          const zipName = `${comp.name}.zip`;
+          const singleComp = [{ name: comp.name, offset: comp.offset, size: comp.size, end: comp.end, present: true, truncated: false, label: comp.label, warning: null }];
+          const zip = buildZip(singleComp, bytes, zipName);
+          if (zip) downloadBlob(zip, zipName, "application/zip");
+          else downloadBlob(bytes.slice(comp.offset, comp.end), `${comp.name}${ext}`, "application/octet-stream");
         });
         tdActions.append(dlBtn);
 
