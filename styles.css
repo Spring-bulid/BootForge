@@ -170,6 +170,23 @@ button { cursor: pointer; font: inherit; }
 .action-row { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 8px; }
 .action-row .btn-ghost { margin-left: auto; }
 
+/* Table action buttons */
+.td-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-xs { font-size: 12px; padding: 3px 10px; min-height: 28px; border-radius: 6px; }
+
+/* Status */
+.status-warn { color: var(--color-warning); }
+.status-muted { color: var(--color-text-dim); }
+.status-error { color: var(--color-error); }
+
+/* Dynamic sections */
+.section-title { font-size: 14px; font-weight: 700; margin: 0 0 8px; color: var(--color-text); }
+.section-note { font-size: 13px; color: var(--color-text-dim); margin: 4px 0; }
+.issue-title { font-weight: 700; margin-bottom: 6px; }
+.inspection-section { margin-top: 16px; }
+.hex-container { margin: 8px 0; }
+.hex-note { font-size: 12px; color: var(--color-text-dim); margin-top: 4px; }
+
 /* Result grid (metadata) */
 .result-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

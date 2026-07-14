@@ -806,7 +806,6 @@ if (typeof document !== "undefined") {
     wrapper.className = "table-scroll";
     const table = document.createElement("table");
     table.className = "boot-component-table";
-    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap;";
 
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
@@ -845,23 +844,23 @@ if (typeof document !== "undefined") {
 
       const tdStatus = document.createElement("td");
       if (comp.truncated) {
-        tdStatus.textContent = "⚠ 已截断";
-        tdStatus.style.color = "var(--color-warning-text)";
+        tdStatus.textContent = "已截断";
+        tdStatus.className = "status-warn";
       } else if (!comp.present) {
         tdStatus.textContent = "不存在";
-        tdStatus.style.color = "var(--color-muted)";
+        tdStatus.className = "status-muted";
       } else {
         tdStatus.textContent = "有效";
       }
       tr.append(tdStatus);
 
       const tdActions = document.createElement("td");
-      tdActions.style.cssText = "display:flex;gap:var(--space-1);flex-wrap:wrap;";
+      tdActions.className = "td-actions";
       if (comp.present && !comp.truncated) {
         const dlBtn = document.createElement("button");
         dlBtn.type = "button";
         dlBtn.textContent = "下载";
-        dlBtn.style.cssText = "min-height:32px;font-size:12px;padding:2px 8px;";
+        dlBtn.className = "btn btn-xs";
         dlBtn.addEventListener("click", () => {
           const ext = detectComponentFormat(bytes, comp.offset, comp.size);
           downloadBlob(bytes.slice(comp.offset, comp.end), `${comp.name}${ext}`, "application/octet-stream");
@@ -872,7 +871,7 @@ if (typeof document !== "undefined") {
           const hexBtn = document.createElement("button");
           hexBtn.type = "button";
           hexBtn.textContent = "Hex";
-          hexBtn.style.cssText = "min-height:32px;font-size:12px;padding:2px 8px;";
+          hexBtn.className = "btn btn-xs";
           hexBtn.addEventListener("click", (e) => handleBootHexToggle(comp, bytes, e));
           tdActions.append(hexBtn);
         }
@@ -893,14 +892,15 @@ if (typeof document !== "undefined") {
       return;
     }
     bootIssues.hidden = false;
+    bootIssues.className = "issue-panel result-section";
     const title = document.createElement("p");
+    title.className = "issue-title";
     title.textContent = `结构问题（${issues.length} 项）：`;
-    title.style.fontWeight = "600";
     bootIssues.append(title);
     for (const entry of issues) {
       const line = document.createElement("p");
       line.textContent = `[${entry.severity === "error" ? "错误" : "警告"}] ${entry.region}: ${entry.message}`;
-      line.style.color = entry.severity === "error" ? "var(--color-error)" : "var(--color-muted)";
+      line.className = entry.severity === "error" ? "status-error" : "status-warn";
       bootIssues.append(line);
     }
   }
@@ -933,15 +933,15 @@ if (typeof document !== "undefined") {
 
   async function renderRamdiskInspection(comp, bytes) {
     const wrapper = document.createElement("div");
-    wrapper.style.cssText = "margin-top:var(--space-3);";
+    wrapper.className = "inspection-section";;
 
     const h3 = document.createElement("h3");
     h3.textContent = "Ramdisk 内容";
-    h3.style.cssText = "font-size:14px;font-weight:600;margin:0 0 var(--space-2);";
+    h3.className = "section-title";
     wrapper.append(h3);
 
     const status = document.createElement("p");
-    status.style.cssText = "font-size:13px;color:var(--color-muted);";
+    status.className = "section-note";
     status.textContent = "正在解析...";
     wrapper.append(status);
 
@@ -1000,7 +1000,7 @@ if (typeof document !== "undefined") {
 
     if (files.length > 200) {
       const note = document.createElement("p");
-      note.style.cssText = "font-size:12px;color:var(--color-muted);";
+      note.className = "section-note";
       note.textContent = `仅显示前 200 项，共 ${files.length} 项。`;
       wrapper.append(note);
     }
@@ -1008,20 +1008,20 @@ if (typeof document !== "undefined") {
 
   function renderDtbInspection(info) {
     const wrapper = document.createElement("div");
-    wrapper.style.cssText = "margin-top:var(--space-3);";
+    wrapper.className = "result-section";
     const h3 = document.createElement("h3");
+    h3.className = "section-title";
     h3.textContent = "DTB / 设备树";
-    h3.style.cssText = "font-size:14px;font-weight:600;margin:0 0 var(--space-2);";
     wrapper.append(h3);
     const p = document.createElement("p");
-    p.style.cssText = "font-size:13px;";
+    p.className = "section-note";
     const parts = [];
     if (info.model) parts.push(`Model: ${info.model}`);
     if (info.compatible) parts.push(`Compatible: ${info.compatible}`);
     parts.push(`Version: ${info.version}`);
     p.textContent = parts.join("  |  ");
     wrapper.append(p);
-    document.querySelector("#boot-components").parentNode.insertBefore(wrapper, document.querySelector("#boot-components").nextSibling);
+    bootComponents.parentNode.insertBefore(wrapper, bootComponents.nextSibling);
   }
 
   function handleBootHexToggle(comp, bytes, event) {
@@ -1046,7 +1046,7 @@ if (typeof document !== "undefined") {
     hexTd.style.cssText = "padding:0;";
 
     const container = document.createElement("div");
-    container.style.cssText = "margin:var(--space-2) 0;";
+    container.className = "hex-container";
 
     const toggle = document.createElement("button");
     toggle.type = "button";
@@ -1084,7 +1084,7 @@ if (typeof document !== "undefined") {
 
     if (comp.size > HEX_PAGE_SIZE) {
       const note = document.createElement("p");
-      note.style.cssText = "font-size:12px;color:var(--color-muted);margin-top:var(--space-1);";
+      note.className = "hex-note";
       note.textContent = `仅显示前 ${formatSize(HEX_PAGE_SIZE)}，共 ${formatSize(comp.size)}。`;
       inner.append(note);
     }
