@@ -1,0 +1,8 @@
+{
+  "name": "dex-xor-utility",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

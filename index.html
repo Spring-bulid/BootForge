@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Android Boot Image 分解工具</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="visually-hidden" id="skip-link" href="#workspace">跳到主内容</a>
+    <main class="app-shell">
+      <header class="title-bar">
+        <h1>Android Boot Image 分解</h1>
+      </header>
+
+      <section class="workspace" id="workspace" aria-label="Boot Image 分解">
+
+        <section class="analysis-section" aria-labelledby="boot-section-title">
+          <h2 id="boot-section-title">选择并解析 Boot Image</h2>
+
+          <label class="drop-zone compact-drop-zone" id="boot-drop-zone" for="boot-file-input">
+            <strong>选择 boot.img / init_boot.img 文件</strong>
+            <span>或将文件拖放到此处</span>
+            <input class="visually-hidden" id="boot-file-input" name="boot-file" type="file" accept=".img" aria-describedby="boot-file-error" aria-invalid="false">
+          </label>
+
+          <p class="file-name" id="boot-file-name">尚未选择文件</p>
+          <div class="file-actions" id="boot-file-actions" hidden>
+            <button type="button" id="boot-replace-file">更换文件</button>
+            <button type="button" id="boot-remove-file">移除</button>
+          </div>
+          <p class="field-error" id="boot-file-error" aria-live="polite"></p>
+
+          <p class="boot-status" id="boot-status" role="status" aria-live="polite">选择 boot image 文件开始解析。</p>
+
+          <div id="boot-results" hidden>
+            <div class="boot-metadata-card" id="boot-metadata"></div>
+            <div id="boot-components"></div>
+            <div class="issue-panel" id="boot-issues" hidden></div>
+            <div class="report-actions">
+              <button type="button" id="boot-download-all" class="primary">下载全部组件 (ZIP)</button>
+              <button type="button" id="boot-download-json">下载 JSON 报告</button>
+              <button type="button" id="boot-reset">重置</button>
+            </div>
+          </div>
+        </section>
+
+      </section>
+    </main>
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
