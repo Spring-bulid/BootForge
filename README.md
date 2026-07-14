@@ -1,78 +1,53 @@
-# Android Boot Image Decompiler
+# boot-image-decompiler
 
-> 纯浏览器端 Android boot.img / init_boot.img 解析与组件提取工具  
-> *Client-side only. No uploads. No server. No dependencies.*
+在浏览器里拆解 Android boot.img / init_boot.img，不需要上传文件，也不依赖后端。
 
-[![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-blue)](https://spring-bulid.github.io/boot-image-decompiler/)
-[![Tests](https://img.shields.io/badge/tests-40%2F40%20passed-brightgreen)](./tests/script.test.js)
-[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+在线使用：https://spring-bulid.github.io/boot-image-decompiler/
 
----
+## 能做什么
 
-## Features
+拖入 boot.img 或 init_boot.img，页面会解析文件头、列出里面的组件（内核、ramdisk、dtb 等），然后可以单独下载每个组件，或者打包成 ZIP 下载。组件的压缩格式（gzip / lz4 / xz 等）会自动识别，下载时会用对应的扩展名。
 
-- Drag-and-drop or file-pick boot.img / init_boot.img
-- Auto-detect header version: V0 / V1 / V2 / V3 / V4
-- Parse metadata — kernel size, ramdisk, cmdline, OS version, security patch level, DTB, Recovery DTBO, etc.
-- Enumerate components — Kernel, Ramdisk, Second Stage, DTB, Recovery DTBO/ACPIO, Boot Signature
-- Per-component download with automatic compression format detection (gzip -> .gz, lz4 -> .lz4, xz -> .xz, etc.)
-- Download All as ZIP with proper folder structure
-- Hex dump viewer (offset + hex + ASCII, collapsible, 8 bytes/row)
-- Export reports as JSON or CSV
-- Accessible: ARIA labels, keyboard navigation, prefers-reduced-motion
-- Zero dependencies — static HTML + JS + CSS
+支持的 boot image 版本：
 
-## Quick Start
+| 版本 | 结构 | 能拆出的组件 |
+|------|------|-------------|
+| V0 | 传统固定偏移 | kernel, ramdisk, second |
+| V1 | V0 + recovery_dtbo 字段 | 加 recovery DTBO/ACPIO |
+| V2 | V1 + dtb 字段 | 加 DTB |
+| V3 | AOSP boot_img_hdr_v3 | kernel, ramdisk |
+| V4 | AOSP boot_img_hdr_v4 | 加 boot signature |
+
+init_boot.img（Android 13+）就是 V4 头但 kernel_size=0，只包含 Generic Ramdisk。
+
+## 本地运行
+
+不需要装任何东西，随便起个静态服务器就行：
 
 ```bash
 npx serve .
-# Open http://localhost:3000
 ```
 
-Or deploy to any static host (GitHub Pages / Vercel / Netlify).
+然后打开 http://localhost:3000。或者直接双击 index.html 也行（有些浏览器可能会因为 ES module 限制加载不了，用 serve 最稳）。
 
-## Run Tests
+## 运行测试
 
 ```bash
 node --test tests/script.test.js
 ```
 
-40 tests covering all pure functions.
-
-## Project Structure
+## 文件说明
 
 ```
-index.html          Single-page UI
-script.js           Pure functions + DOM interactions
-styles.css          Design tokens + component styles
-tests/
-  script.test.js    40 unit tests
-package.json        { "type": "module" }
+index.html     页面
+script.js      解析逻辑和交互
+styles.css     样式
+tests/         测试
+package.json   就一个 { "type": "module" }
 ```
 
-## Supported Versions
+## 关于实现
 
-| 版本 | 魔数 | 布局 | 组件 |
-|------|------|------|------|
-| V0 | `ANDROID!` | Legacy 固定偏移 | kernel, ramdisk, second |
-| V1 | `ANDROID!` | Legacy + recovery_dtbo | + recovery DTBO/ACPIO |
-| V2 | `ANDROID!` | Legacy + dtb | + DTB |
-| V3 | `ANDROID!` | AOSP `boot_img_hdr_v3` | kernel, ramdisk |
-| V4 | `ANDROID!` | AOSP `boot_img_hdr_v4` | + boot signature |
+整个工具就是三个静态文件，不依赖任何框架或库。boot image 的二进制解析用 DataView + Uint8Array 在浏览器本地完成，文件不会离开你的电脑。
 
-**init_boot.img**（Android 13+）：V4 头，kernel_size = 0，仅含 Generic Ramdisk。
-
-## Technical Details
-
-- **纯前端** — `DataView` + `Uint8Array` 解析二进制数据，无后端
-- **V3/V4 AOSP 偏移量** — 严格遵循 `boot_img_hdr_v3` / `boot_img_hdr_v4` 结构体
-- **ZIP 构建** — 零依赖的 PKZIP stored-method 实现（CRC-32 + Local Header + Central Directory + EOCD）
-- **压缩检测** — 支持 gzip、lz4、xz、lzma、zstd、bzip2 魔术字节识别
-- **Hex dump** — 8 字节/行，偏移 + 十六进制 + ASCII，可折叠，大组件截断显示
-- **操作取消** — monotonic `bootOpId` 计数器防止异步竞态
-- **Blob 清理** — `pagehide` 事件回收所有 `ObjectURL`
-- **测试** — Node 原生 `node --test`，合成固件 fixture 覆盖 V0-V4
-
-## License
-
-MIT
+V3/V4 的文件头偏移按照 AOSP mkbootimg 里 boot_img_hdr_v3 / v4 的结构体来读的。ZIP 打包也是自己写的 stored-method PKZIP，没有引用第三方库。
