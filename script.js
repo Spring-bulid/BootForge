@@ -464,6 +464,126 @@ export function serializeBootReport(header, components, format) {
   return serializeAnalysisRows(rows, format);
 }
 
+/* ── Decompress & Inspect ──────────────────────────────────── */
+
+export async function decompressGzip(bytes) {
+  try {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    const chunks = [];
+    const reader = stream.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    let total = 0;
+    for (const c of chunks) total += c.length;
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+export function findKernelVersion(bytes) {
+  if (!(bytes instanceof Uint8Array)) return null;
+  // Search for "Linux version" ASCII string
+  const marker = new TextEncoder().encode("Linux version");
+  for (let i = 0; i < bytes.length - marker.length; i++) {
+    let match = true;
+    for (let j = 0; j < marker.length; j++) {
+      if (bytes[i + j] !== marker[j]) { match = false; break; }
+    }
+    if (match) {
+      // Extract until newline or null
+      let end = i + marker.length;
+      while (end < bytes.length && bytes[end] !== 0x0A && bytes[end] !== 0x00) end++;
+      return new TextDecoder().decode(bytes.slice(i, end));
+    }
+  }
+  return null;
+}
+
+export function parseCpioListing(bytes) {
+  // Parse cpio newc format (magic "070701")
+  if (!(bytes instanceof Uint8Array)) return [];
+  const files = [];
+  let pos = 0;
+
+  while (pos + 110 <= bytes.length) {
+    // Read fixed header (110 bytes for newc)
+    const headerStr = new TextDecoder().decode(bytes.slice(pos, pos + 110));
+    if (!headerStr.startsWith("070701")) break;
+
+    const namesize = parseInt(headerStr.slice(94, 102), 16);
+    const filesize = parseInt(headerStr.slice(54, 62), 16);
+    const mode = parseInt(headerStr.slice(18, 26), 16);
+    const mtime = parseInt(headerStr.slice(46, 54), 16);
+
+    // Read filename
+    const nameStart = pos + 110;
+    const nameEnd = nameStart + namesize;
+    if (nameEnd > bytes.length) break;
+    const name = new TextDecoder().decode(bytes.slice(nameStart, nameEnd)).replace(/\0.*$/, "");
+
+    // Skip data (aligned to 4 bytes)
+    const dataStart = Math.ceil(nameEnd / 4) * 4;
+    const dataEnd = dataStart + filesize;
+    pos = Math.ceil(dataEnd / 4) * 4;
+
+    if (name === "TRAILER!!!") break;
+
+    const isDir = (mode & 0o170000) === 0o040000;
+    const isLink = (mode & 0o170000) === 0o120000;
+    const perms = (mode & 0o777).toString(8).padStart(3, "0");
+    const date = mtime ? new Date(mtime * 1000).toISOString() : "";
+
+    files.push({ name, size: filesize, isDir, isLink, perms, mtime, date });
+  }
+
+  return files;
+}
+
+export function parseDtbInfo(bytes) {
+  // FDT (Flattened Device Tree) header: magic 0xD00DFEED, big-endian
+  if (!(bytes instanceof Uint8Array) || bytes.length < 40) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(0, false) !== 0xD00DFEED) return null;
+
+  const totalsize = view.getUint32(4, false);
+  const offDtStruct = view.getUint32(8, false);
+  const offDtStrings = view.getUint32(12, false);
+  const version = view.getUint32(28, false);
+  const compatVersion = view.getUint32(32, false);
+
+  // Walk dt_struct to find top-level compatible & model strings
+  function readString(off) { let end = off; while (end < bytes.length && bytes[end] !== 0) end++; return new TextDecoder().decode(bytes.slice(off, end)); }
+
+  const info = { totalsize, version, compatVersion, model: null, compatible: null };
+  let pos = offDtStruct;
+  while (pos < bytes.length - 8 && pos < offDtStruct + totalsize) {
+    const token = view.getUint32(pos, false); pos += 4;
+    if (token === 0x00000001) { // FDT_BEGIN_NODE
+      const nodeName = readString(pos);
+      pos = Math.ceil((pos + nodeName.length + 1) / 4) * 4;
+      // Only scan root node
+      if (nodeName !== "") { pos = offDtStruct + totalsize; break; }
+    } else if (token === 0x00000003) { // FDT_PROP
+      const len = view.getUint32(pos, false); pos += 4;
+      const nameoff = view.getUint32(pos, false); pos += 4;
+      const propName = readString(offDtStrings + nameoff);
+      const propVal = bytes.slice(pos, pos + Math.min(len, 256));
+      pos = Math.ceil((pos + len) / 4) * 4;
+      if (propName === "model") info.model = new TextDecoder().decode(propVal).replace(/\0.*$/, "");
+      if (propName === "compatible") info.compatible = new TextDecoder().decode(propVal).replace(/\0.*$/, "");
+    } else if (token === 0x00000002) { pos = offDtStruct + totalsize; break; } // FDT_END_NODE
+  }
+
+  return info;
+}
+
 /* ── Browser UI ───────────────────────────────────────────── */
 
 if (typeof document !== "undefined") {
@@ -558,6 +678,8 @@ if (typeof document !== "undefined") {
       renderBootMetadata(bootHeader);
       renderBootComponents(components, bytes);
       renderBootIssues(bootHeader.issues);
+      // Async inspection of kernel/ramdisk/dtb
+      renderExtraInspection(bootHeader, components, bytes);
 
       bootResults.hidden = false;
       const compCount = components.filter((c) => c.present).length;
@@ -781,6 +903,125 @@ if (typeof document !== "undefined") {
       line.style.color = entry.severity === "error" ? "var(--color-error)" : "var(--color-muted)";
       bootIssues.append(line);
     }
+  }
+
+  async function renderExtraInspection(header, components, bytes) {
+    // Kernel version
+    const kernel = components.find((c) => c.name === "kernel");
+    if (kernel && kernel.present) {
+      const ver = findKernelVersion(bytes.slice(kernel.offset, Math.min(kernel.offset + 65536, kernel.end)));
+      if (ver) {
+        bootStatus.textContent += ` 内核: ${ver}`;
+      }
+    }
+
+    // Ramdisk expansion
+    const ramdisk = components.find((c) => c.name === "ramdisk");
+    if (ramdisk && ramdisk.present && ramdisk.size > 0) {
+      await renderRamdiskInspection(ramdisk, bytes);
+    }
+
+    // DTB info
+    const dtb = components.find((c) => c.name === "dtb");
+    if (dtb && dtb.present && dtb.size >= 40) {
+      const info = parseDtbInfo(bytes.slice(dtb.offset, Math.min(dtb.offset + dtb.size, dtb.offset + 65536)));
+      if (info?.model) {
+        renderDtbInspection(info);
+      }
+    }
+  }
+
+  async function renderRamdiskInspection(comp, bytes) {
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "margin-top:var(--space-3);";
+
+    const h3 = document.createElement("h3");
+    h3.textContent = "Ramdisk 内容";
+    h3.style.cssText = "font-size:14px;font-weight:600;margin:0 0 var(--space-2);";
+    wrapper.append(h3);
+
+    const status = document.createElement("p");
+    status.style.cssText = "font-size:13px;color:var(--color-muted);";
+    status.textContent = "正在解析...";
+    wrapper.append(status);
+
+    // Insert after component table
+    bootComponents.parentNode.insertBefore(wrapper, bootComponents.nextSibling);
+
+    // Check if ramdisk is a compressed cpio
+    const slice = bytes.slice(comp.offset, comp.offset + comp.size);
+    const ext = detectComponentFormat(bytes, comp.offset, comp.size);
+    let expanded;
+
+    if (ext === ".gz") {
+      expanded = await decompressGzip(slice);
+      if (!expanded) {
+        status.textContent = "Gzip 解压失败。";
+        return;
+      }
+    } else {
+      expanded = slice;
+    }
+
+    const files = parseCpioListing(expanded);
+    if (!files.length) {
+      status.textContent = "未识别到有效的 cpio 格式。";
+      return;
+    }
+
+    status.remove();
+
+    const scroll = document.createElement("div");
+    scroll.className = "table-scroll";
+
+    const table = document.createElement("table");
+    table.className = "boot-component-table";
+
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    for (const col of ["文件名", "权限", "大小", "类型"]) {
+      const th = document.createElement("th"); th.scope = "col"; th.textContent = col; hr.append(th);
+    }
+    thead.append(hr); table.append(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const f of files.slice(0, 200)) {
+      const tr = document.createElement("tr");
+      const type = f.isDir ? "目录" : f.isLink ? "符号链接" : "文件";
+      const entries = [f.name, f.perms, f.size > 0 ? formatSize(f.size) : "—", type];
+      for (const t of entries) {
+        const td = document.createElement("td"); td.textContent = t; tr.append(td);
+      }
+      tbody.append(tr);
+    }
+    table.append(tbody);
+    scroll.append(table);
+    wrapper.append(scroll);
+
+    if (files.length > 200) {
+      const note = document.createElement("p");
+      note.style.cssText = "font-size:12px;color:var(--color-muted);";
+      note.textContent = `仅显示前 200 项，共 ${files.length} 项。`;
+      wrapper.append(note);
+    }
+  }
+
+  function renderDtbInspection(info) {
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "margin-top:var(--space-3);";
+    const h3 = document.createElement("h3");
+    h3.textContent = "DTB / 设备树";
+    h3.style.cssText = "font-size:14px;font-weight:600;margin:0 0 var(--space-2);";
+    wrapper.append(h3);
+    const p = document.createElement("p");
+    p.style.cssText = "font-size:13px;";
+    const parts = [];
+    if (info.model) parts.push(`Model: ${info.model}`);
+    if (info.compatible) parts.push(`Compatible: ${info.compatible}`);
+    parts.push(`Version: ${info.version}`);
+    p.textContent = parts.join("  |  ");
+    wrapper.append(p);
+    document.querySelector("#boot-components").parentNode.insertBefore(wrapper, document.querySelector("#boot-components").nextSibling);
   }
 
   function handleBootHexToggle(comp, bytes, event) {

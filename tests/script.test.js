@@ -5,6 +5,7 @@ import {
   decodeOsVersion, formatCmdline, enumerateComponents,
   hexDump, buildZip, serializeBootReport, serializeAnalysisRows,
   detectComponentFormat,
+  findKernelVersion, parseCpioListing, parseDtbInfo, decompressGzip,
 } from "../script.js";
 
 const BOOT_MAGIC_BYTES = new TextEncoder().encode("ANDROID!");
@@ -365,4 +366,43 @@ test("serializeBootReport: CSV output", () => {
   const csv = serializeBootReport(h, c, "csv");
   assert.ok(typeof csv === "string");
   assert.ok(csv.includes("category"));
+});
+
+/* ── findKernelVersion ────────────────────────────────────── */
+
+test("findKernelVersion: finds Linux version", () => {
+  const s = "some data Linux version 5.10.157-android13 (build@host) (clang) #1 SMP PREEMPT Tue Jan 1 00:00:00 CST 2023\nmore data";
+  const buf = new TextEncoder().encode(s);
+  const v = findKernelVersion(buf);
+  assert.ok(v.includes("Linux version"));
+  assert.ok(v.includes("5.10.157"));
+});
+
+test("findKernelVersion: not found", () => {
+  const buf = new Uint8Array(100).fill(0);
+  assert.equal(findKernelVersion(buf), null);
+});
+
+test("findKernelVersion: non-array", () => {
+  assert.equal(findKernelVersion(null), null);
+});
+
+/* ── parseCpioListing ─────────────────────────────────────── */
+
+test("parseCpioListing: non-array", () => {
+  assert.deepEqual(parseCpioListing(null), []);
+});
+
+test("parseCpioListing: too short", () => {
+  assert.deepEqual(parseCpioListing(new Uint8Array(10)), []);
+});
+
+/* ── parseDtbInfo ─────────────────────────────────────────── */
+
+test("parseDtbInfo: null for non-dtb", () => {
+  assert.equal(parseDtbInfo(new Uint8Array(100)), null);
+});
+
+test("parseDtbInfo: too small", () => {
+  assert.equal(parseDtbInfo(new Uint8Array(10)), null);
 });
